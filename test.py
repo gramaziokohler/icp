@@ -1,24 +1,16 @@
 import numpy as np
 import time
 import icp
+from plyfile import PlyData, PlyElement #plyfile library for reading ply point cloud files
+import logging, sys
 
 # Constants
-N = 10                                    # number of random points in the dataset
-num_tests = 100                             # number of test iterations
+N = 1000                                      # number of random points in the dataset
+num_tests = 1                               # number of test iterations
 dim = 3                                     # number of dimensions of the points
 noise_sigma = .01                           # standard deviation error to be added
-translation = .1                            # max translation of the test set
+translation = .5                            # max translation of the test set
 rotation = .1                               # max rotation (radians) of the test set
-
-
-def rotation_matrix(axis, theta):
-    axis = axis/np.sqrt(np.dot(axis, axis))
-    a = np.cos(theta/2.)
-    b, c, d = -axis*np.sin(theta/2.)
-
-    return np.array([[a*a+b*b-c*c-d*d, 2*(b*c-a*d), 2*(b*d+a*c)],
-                  [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
-                  [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
 
 
 def test_best_fit():
@@ -37,7 +29,7 @@ def test_best_fit():
         B += t
 
         # Rotate
-        R = rotation_matrix(np.random.rand(dim), np.random.rand()*rotation)
+        R = icp.rotation_matrix(np.random.rand(dim), np.random.rand()*rotation)
         B = np.dot(R, B.T).T
 
         # Add noise
@@ -64,7 +56,7 @@ def test_best_fit():
     return
 
 
-def test_icp():
+def test_icp_default():
 
     # Generate a random dataset
     A = np.random.rand(N, dim)
@@ -80,7 +72,7 @@ def test_icp():
         B += t
 
         # Rotate
-        R = rotation_matrix(np.random.rand(dim), np.random.rand() * rotation)
+        R = icp.rotation_matrix(np.random.rand(dim), np.random.rand() * rotation)
         B = np.dot(R, B.T).T
 
         # Add noise
@@ -109,7 +101,45 @@ def test_icp():
 
     return
 
+def test_icp():
 
+    # Load Ply A and B
+    A = loadPointCloud('PtCloud1.ply')
+    logging.debug("Point Cloud A: %d pts" % len(A))
+    B = loadPointCloud('PtCloud2.ply')
+    logging.debug("Point Cloud B: %d pts" % len(B))
+
+    #Create a low density point cloud for first pass
+    B_low = icp.decimate_by_sequence(B,20)
+    logging.debug("Point Cloud B: %d pts (After decimate(16))" % len(B_low))
+
+    #Create a high density but centrally filtered point cloud for senond pass
+    B = icp.filter_points_by_angle(B,20) #Filter point clouds within 25degrees in Z Axis
+    logging.debug("Point Cloud B : %d pts (After filtering)" % len(B))
+
+    total_time = 0
+
+    # Run ICP
+    start = time.time()
+    T, distances, iterations = icp.icp(B_low, A, convergence=0.00001, standard_deviation_range = 0.0, max_iterations=30)
+    T, distances, iterations = icp.icp(B, A, convergence=0.0000001, standard_deviation_range = 0.0, max_iterations=100, init_pose = T , quickconverge = 2)
+
+    total_time += time.time() - start
+
+
+    print('icp time: {:.3}'.format(total_time))
+
+    return
+
+def loadPointCloud(filename ='test.ply'):
+    vertices = PlyData.read(filename)['vertex']   
+    #vertices = PlyData.read('test.ply')['vertex']
+    assert 'x' in vertices.data.dtype.names
+    assert 'y' in vertices.data.dtype.names
+    assert 'z' in vertices.data.dtype.names
+
+    #Return only the 'x','y','z' values
+    return vertices[['x','y','z']].copy().view(np.float32).reshape(-1,3)
 if __name__ == "__main__":
     test_best_fit()
     test_icp()
