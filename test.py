@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import icp
-from plyfile import PlyData, PlyElement #plyfile library for reading ply point cloud files
+
 import logging, sys
 
 # Constants
@@ -83,7 +83,7 @@ def test_icp_default():
 
         # Run ICP
         start = time.time()
-        T, distances, iterations = icp.icp(B, A, tolerance=0.000001)
+        T, distances, iterations = icp.icp(B, A, convergence=0.000001)
         total_time += time.time() - start
 
         # Make C a homogeneous representation of B
@@ -101,12 +101,13 @@ def test_icp_default():
 
     return
 
+
 def test_icp():
 
     # Load Ply A and B
-    A = loadPointCloud('PtCloud1.ply')
+    A = icp.loadPointCloud('PtCloud1.ply')
     logging.debug("Point Cloud A: %d pts" % len(A))
-    B = loadPointCloud('PtCloud2.ply')
+    B = icp.loadPointCloud('PtCloud2.ply')
     logging.debug("Point Cloud B: %d pts" % len(B))
 
     #Create a low density point cloud for first pass
@@ -131,15 +132,6 @@ def test_icp():
 
     return
 
-def loadPointCloud(filename ='test.ply'):
-    vertices = PlyData.read(filename)['vertex']   
-    #vertices = PlyData.read('test.ply')['vertex']
-    assert 'x' in vertices.data.dtype.names
-    assert 'y' in vertices.data.dtype.names
-    assert 'z' in vertices.data.dtype.names
 
-    #Return only the 'x','y','z' values
-    return vertices[['x','y','z']].copy().view(np.float32).reshape(-1,3)
 if __name__ == "__main__":
-    test_best_fit()
     test_icp()

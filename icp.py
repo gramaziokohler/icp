@@ -1,13 +1,36 @@
-import numpy as np
-from sklearn.neighbors import NearestNeighbors
-from math import cos,radians,ceil
-import logging, sys
+import logging
+import sys  
+from math import ceil, cos, radians             #Angle Calculation
+
+import numpy as np                              # General Matrix Computation
+from sklearn.neighbors import NearestNeighbors  # Computation of Nearest Neighbour
+
+from plyfile import PlyData, PlyElement         # plyfile library for reading ply point cloud files         
+                     
+
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
+def loadPointCloud(filename ='test.ply'):
+    """Load the XYZ location of all points from a ply file
+    
+    Parameters
+    ----------
+    filename : str
+        path to the ply file (the default is 'test.ply')
 
-# processed_records = [1,2,3]
-# logging.debug('A debug message!')
-# logging.info('We processed %d records', len(processed_records))
+    Returns
+    -------
+    numpy array
+        Qxm array a list of m-Dimensioned Points, item count reduced from P to Q, where Q = ceil(P/everyNth)
+    """
+    vertices = PlyData.read(filename)['vertex']   
+    #vertices = PlyData.read('test.ply')['vertex']
+    assert 'x' in vertices.data.dtype.names
+    assert 'y' in vertices.data.dtype.names
+    assert 'z' in vertices.data.dtype.names
+
+    #Return only the 'x','y','z' values
+    return vertices[['x','y','z']].copy().view(np.float32).reshape(-1,3)
 
 
 def rotation_matrix(axis, theta):
@@ -19,8 +42,10 @@ def rotation_matrix(axis, theta):
                   [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
                   [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
 
+
 def format_transformation_matrix (T):
     return ["{},{}".format(i, j) for i, j in T]
+
 
 def best_fit_transform(A, B):
     '''
@@ -65,17 +90,20 @@ def best_fit_transform(A, B):
 
     return T, R, t
 
+
 def nearest_neighbor(src, dst):
-    '''
-    Find the nearest (Euclidean) neighbor in dst for each point in src
-    Input:
+    '''Find the nearest (Euclidean) neighbor in dst for each point in src
+    
+    Parameters
+    ----------
         src: Pxm array of points
         dst: Qxm array of points
-    Output:
+
+    Returns
+    -------
         distances: P-elements array of Euclidean distances of the nearest neighbor
         indices: P-elements array of dst indices of the nearest neighbor
     '''
-
     # Asserting src and dst have the same dimension. They can have different point count.
     assert src.shape[1] == dst.shape[1]
 
@@ -84,9 +112,11 @@ def nearest_neighbor(src, dst):
     distances, indices = neigh.kneighbors(src, return_distance=True)
     return distances.ravel(), indices.ravel()
 
+
 def unit_vector(vector):
     """ Returns the unit vector of the vector.  """
     return vector / np.linalg.norm(vector)
+
 
 def angle_between(v1, v2):
     """ Returns the angle in radians between vectors 'v1' and 'v2'::
@@ -102,7 +132,22 @@ def angle_between(v1, v2):
     v2_u = unit_vector(v2)
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0))
 
+
 def filter_points_by_angle (A, angle_in_degrees):
+    """Reduce the number of items in a point cloud by measuring the poitional vector of each point to the Z axis
+    
+    Parameters
+    ----------
+    A : numpy array
+        Pxm array for a list with P items of m-Dimensioned Points
+    angle_in_degrees : float
+        points located within this angle to the Z-Axis is kept 
+
+    Returns
+    -------
+    numpy array
+        Qxm array a list of m-Dimensioned Points, item count reduced from P to Q, where Q = ceil(P/everyNth)
+    """
     indices = []
     angle = cos(radians(angle_in_degrees))
     for i in xrange(len(A)):
@@ -111,10 +156,24 @@ def filter_points_by_angle (A, angle_in_degrees):
     #This is a very inefficient implementation, someone kwno knows Numpy better should have a better way of dealing with this,
     return A[indices]
 
+
 def decimate_by_sequence (A, everyNth = 2):
-    ''' A: Pxm numpy array of source mD points
-    '''
+    """Reduce the number of points in a point cloud
+
+    Parameters
+    ----------
+    A : numpy array 
+        Pxm array for a list with P items of m-Dimensioned Points
+    everyNth : int, optional
+        Return one point for every x Number of points  (the default is 2, which is to return every other point)
+
+    Returns
+    -------
+    numpy array
+        Qxm array a list of m-Dimensioned Points, item count reduced from P to Q, where Q = ceil(P/everyNth)
+    """
     return A[range(0,len(A),everyNth)]
+
 
 def icp(A, B, standard_deviation_range = 0.0, init_pose=None, max_iterations=100, convergence=0.001, quickconverge=1, filename="results.txt"):
     '''
